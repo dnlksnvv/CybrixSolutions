@@ -1,0 +1,54 @@
+.DS_Store
+**/.DS_Store
+.idea/
+**/.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Build artifacts
+build/
+dist/
+site/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# JavaScript
+node_modules/
+.next/
+coverage/
+
+# Binary and generated files
+*.log
+*.db
+*.sqlite3
+*.pid
+*.tmp
+*.swp
+*.swo
+
+# Keep .env files versioned intentionally
+!.env
+!**/.env
