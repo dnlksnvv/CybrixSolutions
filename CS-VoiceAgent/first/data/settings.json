@@ -1,0 +1,6 @@
+{
+  "dashscope_api_key": "sk-84e7ec698d134fd3a5b757a5530167e3",
+  "default_llm_model": "qwen-plus",
+  "default_stt_model": "qwen3-asr-flash",
+  "default_tts_model": "qwen3-tts-flash"
+}

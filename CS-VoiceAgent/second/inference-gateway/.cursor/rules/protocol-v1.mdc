@@ -1,0 +1,64 @@
+---
+description: v1 request/response envelopes for LLM/TTS/STT
+alwaysApply: true
+---
+
+# Protocol v1
+
+Все эндпоинты под `/v1/`. Версия в URL. Для v2 — новый префикс. Источник правды: `internal/protocol/v1`. JSON tags — `lower_snake_case`.
+
+## LLM — `POST /v1/llm/chat` (HTTP, response = NDJSON stream)
+
+Request:
+
+```json
+{
+  "request_id": "uuid",
+  "call_id": "uuid",
+  "model": "giga-chat",
+  "mode": "llm",
+  "input": {
+    "messages": [{ "role": "system|user|assistant", "content": "..." }],
+    "temperature": 0.3,
+    "max_tokens": 512,
+    "stream": true
+  },
+  "meta": { "lang": "ru" }
+}
+```
+
+Stream events (по строке на JSON):
+- `{ "type": "delta", "request_id", "text": "..." }`
+- `{ "type": "end",   "request_id" }`
+- `{ "type": "error", "request_id", "code", "message", "retryable": false }`
+
+## TTS — `GET /v1/tts/ws`
+
+Client → Gateway:
+- `{ "type": "session.start", "request_id", "call_id", "model", "voice", "audio_format": "pcm_s16le", "sample_rate": 24000 }`
+- `{ "type": "input.text",    "request_id", "text": "..." }` (повторяется)
+- `{ "type": "input.commit",  "request_id" }`
+- `{ "type": "cancel",        "request_id" }`
+
+Gateway → Client:
+- `{ "type": "audio.chunk", "request_id", "seq", "pcm_b64" }`
+- `{ "type": "audio.end",   "request_id", "duration_ms" }`
+- `{ "type": "error",       "request_id", "code", "message" }`
+
+## STT — `GET /v1/stt/ws`
+
+Client → Gateway:
+- `{ "type": "session.start", "request_id", "call_id", "model", "language", "audio_format": "pcm_s16le", "sample_rate": 16000 }`
+- `{ "type": "audio.chunk",   "request_id", "seq", "pcm_b64" }` (повторяется)
+- `{ "type": "input.finish",  "request_id" }`
+
+Gateway → Client:
+- `{ "type": "transcript.partial", "request_id", "text", "start_ms", "end_ms" }`
+- `{ "type": "transcript.final",   "request_id", "text", "start_ms", "end_ms" }`
+- `{ "type": "session.end",        "request_id" }`
+- `{ "type": "error",              "request_id", "code", "message" }`
+
+## Common rules
+- `request_id` обязателен везде. Любой ответ относится к нему.
+- `model` — имя в реестре (`registry`). Неизвестная модель → `error.code = "MODEL_UNKNOWN"`.
+- Ошибки имеют стабильные `code`: `MODEL_UNKNOWN`, `UPSTREAM_TIMEOUT`, `UPSTREAM_4XX`, `UPSTREAM_5XX`, `BAD_REQUEST`, `INTERNAL`.

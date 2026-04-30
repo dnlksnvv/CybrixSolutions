@@ -1,0 +1,32 @@
+---
+description: WebSocket lifecycle and proxying rules
+globs: **/inference-gateway/internal/transport/ws/**/*.go
+alwaysApply: false
+---
+
+# WebSocket proxy lifecycle
+
+Шлюз держит ДВА WS на сессию: `client ↔ gateway` и `gateway ↔ upstream` (если провайдер тоже WS). Для non-WS upstream (например REST) — gateway эмулирует stream на выход.
+
+## Lifecycle
+
+1. Принять клиентский WS.
+2. Дождаться `session.start`. Валидировать → разрешить `model` через `registry`.
+3. Открыть upstream (WS или HTTP) с правильными ключами из `config`.
+4. Поднять две goroutine + `errgroup`:
+   - `clientReader`: client → service (text/audio events).
+   - `upstreamReader`: provider stream → client (audio/transcript events).
+5. Закрывать upstream **только** когда:
+   - клиент закрыл соединение, или
+   - получен `cancel` от клиента, или
+   - провайдер сам сигнализировал `end` и весь буфер слит клиенту.
+6. НЕ закрывать клиента раньше, чем доставлены все события из upstream.
+
+## Rules
+- Любая goroutine берёт `ctx`, отменяемый при выходе из errgroup.
+- Backpressure: канал событий ограничен (например 64). Аудио НЕ дропать. Для транскриптов partial — допустим coalescing.
+- Errors: маппить в v1 `error` и слать клиенту до закрытия. Только если маппинг невозможен — закрывать с code `1011`.
+- Heartbeat: WS ping каждые 20s, тайм-аут pong 60s.
+- `session.start` без model или с неизвестной моделью → отдать `error{code:"MODEL_UNKNOWN"}` и закрыть с `1008`.
+- Никаких глобальных map сессий. Всё живёт в стеке хендлера.
+- Размеры сообщений: текст до 64KB, аудио-фреймы до 256KB. Превышение → `error{code:"BAD_REQUEST"}`.

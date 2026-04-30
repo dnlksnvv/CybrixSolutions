@@ -1,0 +1,18 @@
+# Sber GigaChat (OAuth + OpenAI-compat). One file = one profile.
+# Required: credentials_env, defaults.scope/oauth_url/base_url/model/verify_tls.
+# Secret: base64(client_id:client_secret) in the env named by credentials_env.
+
+provider: gigachat
+
+public_ids:
+  - giga-chat
+
+credentials_env: LLM_GIGA_CHAT_CREDENTIALS
+
+defaults:
+  scope: GIGACHAT_API_PERS
+  oauth_url: https://ngw.devices.sberbank.ru:9443/api/v2/oauth
+  base_url: https://gigachat.devices.sberbank.ru/api/v1
+  model: GigaChat-2-Max
+  # false if the Russian CA bundle is not in the trust store (local dev).
+  verify_tls: false

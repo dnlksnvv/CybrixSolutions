@@ -1,0 +1,32 @@
+# SaluteSpeech STT realtime over gRPC.
+# Override directory: STT_SBER_TEMPLATE_DIR=/path/to/dir
+
+public_ids:
+  - sber-stt-realtime
+  - salute-stt
+
+credentials_env: TTS_SALUTE_CREDENTIALS
+scope: SALUTE_SPEECH_PERS
+oauth_url: https://ngw.devices.sberbank.ru:9443/api/v2/oauth
+grpc_addr: smartspeech.sber.ru:443
+
+# Optional absolute or template-relative path to PEM bundle.
+# On macOS with Russian root CA this is usually required when verify_tls=true.
+ca_bundle_file: ../../../certs/russian_trusted_root_ca.pem
+# Alternative: store PEM text in env and set variable name here.
+# If set, it has priority over ca_bundle_file.
+# ca_bundle_pem_env: STT_SBER_CA_BUNDLE_PEM
+
+defaults:
+  verify_tls: true
+  language: ru-RU
+  sample_rate: 16000
+  hypotheses_count: 1
+  # Слишком мало → Salute чаще шлёт EOU на короткой паузе, одна фраза режется на несколько «сообщений» в UI.
+  eou_timeout_ms: 500
+  partial_results: true
+  multi_utterance: true
+
+from_client:
+  language: optional
+  sample_rate: optional

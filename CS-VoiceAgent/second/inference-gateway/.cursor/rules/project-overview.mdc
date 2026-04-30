@@ -1,0 +1,28 @@
+---
+description: Inference Gateway — service overview, scope, modalities
+alwaysApply: true
+---
+
+# Inference Gateway
+
+Go service that standardizes access to LLM / STT / TTS providers (DashScope Qwen, GigaChat, SaluteSpeech, ElevenLabs, OpenAI и т.д.) за единым v1 API.
+
+## Goals (v1)
+- Один внутренний контракт на каждую модальность (LLM/STT/TTS).
+- Шаблоны на модель: имя модели в запросе → нужный upstream-вызов.
+- Секреты только из `.env` через `internal/config` (DB будет позже).
+- Полный proxy для WebSocket: upstream WS открывается с клиентским и закрывается ТОЛЬКО после клиентского.
+- Без БД, без Redis, без аутентификации пользователей. Состояние — только в памяти, на сессию.
+
+## Out of scope (v1)
+- Аккаунты, тенанты, биллинг, подсчёт токенов, лимиты по пользователям.
+- Персистентность реестра моделей (он в коде/конфиге).
+- Метрики/трассировка для прод (минимально только логи).
+
+## Modalities & transports
+- **LLM**: HTTP `POST /v1/llm/chat` (стрим chunked NDJSON, формат см. `protocol-v1`).
+- **TTS**: WebSocket `GET /v1/tts/ws` (event protocol).
+- **STT**: WebSocket `GET /v1/stt/ws` (event protocol).
+
+## Naming
+Сервис называть **inference-gateway** (или `ai-gateway`). НЕ называть «proxy» в коде — это шлюз с маршрутизацией.

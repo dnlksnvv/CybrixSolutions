@@ -1,0 +1,19 @@
+---
+description: Go style and conventions for inference-gateway
+globs: **/inference-gateway/**/*.go
+alwaysApply: false
+---
+
+# Go conventions
+
+- Go 1.22+. Стек: stdlib, `nhooyr.io/websocket` (или `gorilla/websocket`), `github.com/joho/godotenv`, `log/slog`, `golang.org/x/sync/errgroup`.
+- `context.Context` — первый аргумент любой I/O-функции. Никогда не игнорируется.
+- Errors: `fmt.Errorf("doing X: %w", err)`. Никогда `_ = err`.
+- Logging: `log/slog` структурный. Контекст: `slog.With("request_id", id, "model", m)`. `fmt.Println` — только в `cmd/`.
+- DI через конструкторы. Никаких глобалов и `init()`-сайд-эффектов (кроме регистрации type assertions).
+- Concurrency: `errgroup.Group` + каналы. Каждая goroutine завершается по `ctx.Done()` или закрытию канала.
+- Тесты рядом с кодом (`*_test.go`). Сетевые вызовы — через `httptest`/мок WS, не реальный network.
+- `internal/protocol/v1` — единственный источник правды для envelope. JSON `lower_snake_case`.
+- Интерфейсы модальностей в `internal/services/{llm,tts,stt}/iface.go`. Реализации LLM/STT — рядом в том же пакете; TTS по upstream — в `internal/services/tts/qwen/`, `internal/services/tts/sber/`, ….
+- Не использовать `panic` вне `cmd/server` и `must*`-helper'ов на старте.
+- Все таймауты конфигурируемы через env с дефолтами (`UPSTREAM_TIMEOUT_MS=30000` и т.п.).

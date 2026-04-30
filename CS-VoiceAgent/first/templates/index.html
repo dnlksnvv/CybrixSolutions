@@ -1,0 +1,1414 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CS-VoiceAgent (Alibaba Model Studio)</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+      .row { display: flex; gap: 16px; flex-wrap: wrap; }
+      .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; min-width: 320px; flex: 1; }
+      label { display: block; font-size: 12px; opacity: 0.8; margin-top: 10px; }
+      input, select, textarea, button { width: 100%; padding: 10px; margin-top: 6px; box-sizing: border-box; }
+      textarea { min-height: 120px; }
+      pre { background: #0b1020; color: #e6e6e6; padding: 12px; border-radius: 10px; overflow: auto; }
+      .warn { background: #fff3cd; border: 1px solid #ffeeba; padding: 10px; border-radius: 10px; }
+      .ok { background: #e8fff1; border: 1px solid #b7f5d1; padding: 10px; border-radius: 10px; }
+      .muted { opacity: 0.75; font-size: 12px; }
+      .inline { display: flex; gap: 8px; }
+      .inline > * { flex: 1; }
+      .page { display: grid; grid-template-columns: 1fr minmax(280px, 400px); gap: 16px; align-items: start; max-width: 1440px; }
+      .page-main { min-width: 0; }
+      .page-side { position: sticky; top: 12px; }
+      @media (max-width: 1020px) {
+        .page { grid-template-columns: 1fr; }
+        .page-side { position: static; }
+      }
+      .flow { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+      .flow-step { padding: 8px 10px; border-radius: 8px; border: 1px solid #ccc; background: #fafafa; transition: background .15s, border-color .15s, font-weight .15s; }
+      .flow-step.on { background: #e8f4ff; border-color: #6b9bd1; font-weight: 600; }
+      .flow-step.done { background: #e8fff1; border-color: #5ec995; }
+      .flow-arrow { color: #888; font-size: 11px; margin-left: 8px; }
+      .chat { display: flex; flex-direction: column; gap: 10px; max-height: min(68vh, 520px); overflow-y: auto; padding: 10px; background: #0b1020; border-radius: 10px; color: #e6e6e6; font-size: 13px; }
+      .chat-msg { padding: 8px 10px; border-radius: 8px; max-width: 100%; white-space: pre-wrap; word-break: break-word; }
+      .chat-msg.user { background: #1a2a4a; align-self: flex-start; }
+      .chat-msg.assistant { background: #102418; align-self: flex-start; }
+      .chat-msg.note { background: #2a2410; font-size: 12px; opacity: 0.92; }
+      .chat-draft { font-size: 12px; opacity: 0.85; border-left: 3px solid #555; padding-left: 8px; margin-bottom: 4px; }
+    </style>
+  </head>
+  <body>
+    <h2>CS-VoiceAgent</h2>
+
+    {% if not api_key_set %}
+      <div class="warn">
+        <b>Нет ключа.</b> Введи ключ ниже (сохранится на сервере в <code>data/settings.json</code>) или установи переменную окружения <code>DASHSCOPE_API_KEY</code> и перезапусти сервер.
+      </div>
+    {% else %}
+      <div class="ok">
+        <b>DASHSCOPE_API_KEY</b> найден.
+      </div>
+    {% endif %}
+
+    <p class="muted">
+      Это минимальный тестовый UI под Alibaba Model Studio (Singapore): LLM, STT, voice cloning, TTS.
+    </p>
+
+    <div class="page">
+    <div class="page-main">
+
+    <div class="card" style="margin: 16px 0;">
+      <h3>Settings (server-side)</h3>
+      <p class="muted">
+        Ключ сохраняется <b>на сервере</b> (не в браузере). Не отдаём его обратно в UI.
+      </p>
+      <form id="settingsForm">
+        <label>DashScope API key (Singapore)</label>
+        <input name="dashscope_api_key" type="password" placeholder="sk-..." />
+        <div class="inline">
+          <div>
+            <label>Default LLM model</label>
+            <select name="default_llm_model">
+              {% for m in llm_models %}
+                <option value="{{ m }}" {% if m == defaults.llm_model %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Default STT model</label>
+            <select name="default_stt_model">
+              {% for m in stt_models %}
+                <option value="{{ m }}" {% if m == defaults.stt_model %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Default Realtime TTS model</label>
+            <select name="default_tts_model">
+              {% for m in tts_realtime_models %}
+                <option value="{{ m }}" {% if m == defaults.tts_model %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <h4 style="margin-top: 18px; margin-bottom: 0;">Голосовой чат → LLM</h4>
+        <p class="muted" style="margin-top: 4px;">
+          Модель, отдельный API key и OpenAI-compatible base — по желанию. System prompt применяется на сервере при стриме <code>/api/llm/stream</code>.
+        </p>
+        <label>Модель для голосового чата</label>
+        <input name="voice_chat_llm_model" list="voiceChatLlmList" value="{{ voice_chat.llm_model }}" autocomplete="off" />
+        <datalist id="voiceChatLlmList">
+          {% for m in llm_models %}<option value="{{ m }}"></option>{% endfor %}
+        </datalist>
+        <label>API key только для LLM (необязательно)</label>
+        <input name="voice_chat_llm_api_key" type="password" placeholder="пусто → общий DashScope key" autocomplete="new-password" />
+        {% if voice_chat.llm_api_key_set %}<p class="muted">Отдельный LLM-ключ уже сохранён на сервере.</p>{% endif %}
+        <label>OpenAI-compatible base URL для LLM (необязательно)</label>
+        <input name="voice_chat_openai_base" type="text" placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1" />
+        {% if voice_chat.openai_base_set %}<p class="muted">Свой base URL задан.</p>{% endif %}
+        <label>System prompt (голосовой чат)</label>
+        <textarea name="voice_chat_system_prompt" rows="4">{{ voice_chat.system_prompt }}</textarea>
+        <button type="submit">Save settings</button>
+      </form>
+      <pre id="settingsOut"></pre>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h3>LLM</h3>
+        <form id="llmForm">
+          <label>Model</label>
+          <select name="model">
+            {% for m in llm_models %}
+              <option value="{{ m }}" {% if m == defaults.llm_model %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+          <label>Prompt</label>
+          <textarea name="prompt">Привет! Ответь коротко.</textarea>
+          <button type="submit">Send</button>
+        </form>
+        <label>Result</label>
+        <pre id="llmOut"></pre>
+      </div>
+
+      <div class="card">
+        <h3>STT (transcribe)</h3>
+        <form id="sttForm" enctype="multipart/form-data">
+          <label>Model</label>
+          <select name="model">
+            {% for m in stt_models %}
+              <option value="{{ m }}" {% if m == defaults.stt_model %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+          <div class="inline">
+            <div>
+              <label>Language (optional)</label>
+              <select name="language">
+                {% for code, label in stt_languages %}
+                  <option value="{{ code }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Audio file</label>
+              <input name="audio" type="file" accept="audio/*" required />
+            </div>
+          </div>
+          <button type="submit">Transcribe</button>
+        </form>
+        <label>Result</label>
+        <pre id="sttOut"></pre>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 16px;">
+      <div class="card">
+        <h3>Realtime STT (browser)</h3>
+        <p class="muted">
+          Микрофон → PCM 16kHz (mono) чанки по WebSocket → частичный/финальный текст от Qwen ASR Realtime.
+        </p>
+        <div class="inline">
+          <div>
+            <label>Realtime ASR model</label>
+            <select id="asrModel">
+              {% for m in asr_realtime_models %}
+                <option value="{{ m }}" {% if m == "qwen3-asr-flash-realtime" %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Language (optional)</label>
+            <select id="asrLang">
+              {% for code, label in asr_realtime_languages %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="inline">
+          <button id="asrStart" type="button">Start listening</button>
+          <button id="asrStop" type="button" disabled>Stop</button>
+        </div>
+        <label>Live partial</label>
+        <pre id="asrPartial"></pre>
+        <label>Final segments</label>
+        <pre id="asrFinal"></pre>
+        <label>Status</label>
+        <pre id="asrStatus"></pre>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 16px;">
+      <div class="card">
+        <h3>Голосовой чат (pipeline)</h3>
+        <p><b>Как запустить</b></p>
+        <ol class="muted" style="margin-top: 0; padding-left: 1.2rem;">
+          <li>Запусти сервер из каталога <code>CS-VoiceAgent</code>:
+            <code style="display:block; margin-top:6px; font-size:11px;">uvicorn app.main:app --reload --host 127.0.0.1 --port 8008</code>
+            затем открой в браузере <code>http://127.0.0.1:8008/</code> (порт можно другой).
+          </li>
+          <li>В <b>Settings</b> сохрани DashScope key и при необходимости блок <b>«Голосовой чат → LLM»</b> (модель, system prompt, отдельный API key).</li>
+          <li>Ниже выбери <b>модель/язык ASR</b> и <b>голос TTS</b> именно для этого сценария.</li>
+          <li>Нажми <b>«Начать сценарий»</b> — браузер спросит микрофон; говори предложениями с <code>. ! ?</code> в конце.</li>
+          <li>Справа в чате увидишь стрим ответа LLM и услышишь озвучку. <b>«Остановить»</b> — завершить STT и TTS.</li>
+        </ol>
+        <p class="muted">
+          В LLM текст уходит после <b>тишины STT</b>: нет новых partial/final дольше заданного числа миллисекунд — можно «договорить» без нового запроса на каждый сегмент.
+          Ответ стримится в чат; в TTS — по готовым предложениям в потоке (<code>. ! ?</code> и перенос строки). При новой речи можно <b>прервать генерацию</b> и/или <b>обнулить очередь звука</b> (контекст в чате сохраняется).
+        </p>
+        <h4 style="margin-bottom: 0;">Параметры сценария</h4>
+        <div class="inline">
+          <div>
+            <label>Realtime ASR (модель)</label>
+            <select id="vcAsrModel">
+              {% for m in asr_realtime_models %}
+                <option value="{{ m }}" {% if m == "qwen3-asr-flash-realtime" %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Язык распознавания</label>
+            <select id="vcAsrLang">
+              {% for code, label in asr_realtime_languages %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="inline">
+          <div>
+            <label>Realtime TTS (модель)</label>
+            <select id="vcTtsModel">
+              {% for m in tts_realtime_models %}
+                <option value="{{ m }}" {% if m == defaults.tts_model %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Голос</label>
+            <select id="vcTtsVoice">
+              {% for v, label in system_voices %}
+                <option value="{{ v }}">{{ label }}</option>
+              {% endfor %}
+              {% for v in voices %}
+                <option value="{{ v.id }}">{{ v.preferred_name }} (clone) — {{ v.id }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Language type (TTS)</label>
+            <select id="vcTtsLangType">
+              {% for code, label in tts_language_types %}
+                <option value="{{ code }}" {% if code == "Auto" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <label style="display: block; margin-top: 10px;">
+          <input type="checkbox" id="vcDisableVoice" />
+          Без голоса (для тестов): не подключать TTS и не слать текст в <code>/ws/tts</code> — остаются STT и LLM
+        </label>
+        <label style="display: block; margin-top: 6px;">
+          <input type="checkbox" id="vcDisableLlm" />
+          Без LLM (для тестов): не вызывать <code>/api/llm/stream</code> — только STT (и TTS, если голос не выключен)
+        </label>
+        <h4 style="margin-bottom: 0;">Пауза перед LLM</h4>
+        <label>Мс тишины после последнего токена STT (partial или final), затем отправка в LLM</label>
+        <input type="number" id="vcSttQuietMs" value="300" min="0" max="10000" step="50" />
+        <h4 style="margin-bottom: 0;">Прерывание при новой речи</h4>
+        <p class="muted" style="margin-top: 4px;">Срабатывает при появлении нового <b>partial</b>, пока идёт ответ LLM или есть звук в очереди.</p>
+        <label><input type="checkbox" id="vcInterruptGen" checked /> Прервать генерацию LLM</label>
+        <label><input type="checkbox" id="vcInterruptSound" checked /> Остановить воспроизведение (очистить очередь PCM)</label>
+        <div class="inline" style="margin-top: 8px;">
+          <button id="vcStopGen" type="button" disabled>Стоп генерация</button>
+          <button id="vcStopSound" type="button" disabled>Стоп звук</button>
+        </div>
+        <div class="inline">
+          <button id="vcStart" type="button">Начать сценарий</button>
+          <button id="vcStop" type="button" disabled>Остановить</button>
+        </div>
+        <label>Статус</label>
+        <pre id="vcPipelineStatus"></pre>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 16px;">
+      <div class="card">
+        <h3>Realtime TTS (browser)</h3>
+        <p class="muted">
+          Отправляй текст предложениями (по .?!). Аудио играет сразу по чанкам PCM 24kHz.
+        </p>
+        <div class="inline">
+          <div>
+            <label>Realtime model</label>
+            <select id="rtModel">
+              {% for m in tts_realtime_models %}
+                <option value="{{ m }}" {% if m == defaults.tts_model %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Voice</label>
+            <select id="rtVoice">
+              {% for v, label in system_voices %}
+                <option value="{{ v }}">{{ label }}</option>
+              {% endfor %}
+              {% for v in voices %}
+                <option value="{{ v.id }}">{{ v.preferred_name }} (clone) — {{ v.id }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Language type</label>
+            <select id="rtLanguageType">
+              {% for code, label in tts_language_types %}
+                <option value="{{ code }}" {% if code == "Auto" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <label>Text</label>
+        <textarea id="rtText">Привет! Это тест realtime синтеза. Второе предложение отдельно.</textarea>
+        <div class="inline">
+          <button id="rtStart" type="button">Start</button>
+          <button id="rtSend" type="button">Send sentences</button>
+          <button id="rtStop" type="button">Stop</button>
+        </div>
+        <label>Status</label>
+        <pre id="rtOut"></pre>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 16px;">
+      <div class="card">
+        <h3>Record or upload → STT → Voice clone (browser)</h3>
+        <div class="inline">
+          <button id="recStart" type="button">Start recording</button>
+          <button id="recStop" type="button" disabled>Stop</button>
+        </div>
+        <label>Or upload audio (WAV, MP3, M4A, WebM, OGG)</label>
+        <input id="recFile" type="file" accept="audio/*,.wav,.mp3,.m4a,.webm,.ogg" style="width: 100%;" />
+        <label>Preview</label>
+        <audio id="recAudio" controls style="width: 100%;"></audio>
+        <div class="inline">
+          <div>
+            <label>STT model</label>
+            <select id="recSttModel">
+              {% for m in stt_models %}
+                <option value="{{ m }}" {% if m == defaults.stt_model %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Language (optional)</label>
+            <select id="recSttLang">
+              {% for code, label in stt_languages %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <button id="recTranscribe" type="button" disabled>Transcribe recording</button>
+        <label>Transcript (editable)</label>
+        <textarea id="recTranscript" placeholder="Тут появится транскрипция, можно поправить…"></textarea>
+        <div class="inline">
+          <div>
+            <label>Target model</label>
+            <select id="recTargetModel">
+              {% for m in voice_clone_target_models %}
+                <option value="{{ m }}" {% if m == "qwen3-tts-vc-realtime-2026-01-15" %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Preferred name</label>
+            <input id="recPreferredName" value="myvoice" />
+          </div>
+        </div>
+        <button id="recCreateVoice" type="button" disabled>Create voiceprint from recording</button>
+        <pre id="recOut"></pre>
+      </div>
+    </div>
+
+    </div><!-- page-main -->
+
+    <aside class="page-side">
+      <div class="card" style="margin-bottom: 16px;">
+        <h3>Схема работы</h3>
+        <div class="flow" id="vcFlow">
+          <div class="flow-step" data-vc-step="idle">Ожидание</div>
+          <span class="flow-arrow">↓</span>
+          <div class="flow-step" data-vc-step="stt">Распознавание речи (STT)</div>
+          <span class="flow-arrow">↓</span>
+          <div class="flow-step" data-vc-step="sentence">Предложение готово → запрос в LLM</div>
+          <span class="flow-arrow">↓</span>
+          <div class="flow-step" data-vc-step="llm">Ответ LLM (stream)</div>
+          <span class="flow-arrow">↓</span>
+          <div class="flow-step" data-vc-step="tts">Озвучивание (realtime TTS)</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Чат</h3>
+        <div class="chat-draft" id="vcDraft">Черновик речи: —</div>
+        <div class="chat" id="vcChat"></div>
+      </div>
+    </aside>
+    </div><!-- page -->
+
+    <script>
+      const settingsForm = document.getElementById("settingsForm");
+      settingsForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const out = document.getElementById("settingsOut");
+        out.textContent = "…";
+        const fd = new FormData(settingsForm);
+        const res = await fetch("/api/settings", { method: "POST", body: fd });
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+        if (data.ok) setTimeout(() => location.reload(), 600);
+      });
+
+      async function postForm(url, form, outEl) {
+        outEl.textContent = "…";
+        const fd = new FormData(form);
+        const res = await fetch(url, { method: "POST", body: fd });
+        const data = await res.json();
+        outEl.textContent = JSON.stringify(data, null, 2);
+        return data;
+      }
+
+      const llmForm = document.getElementById("llmForm");
+      llmForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const out = document.getElementById("llmOut");
+        const data = await postForm("/api/llm", llmForm, out);
+        if (data.ok) out.textContent = data.text;
+      });
+
+      const sttForm = document.getElementById("sttForm");
+      sttForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const out = document.getElementById("sttOut");
+        const data = await postForm("/api/stt", sttForm, out);
+        if (data.ok) out.textContent = data.text;
+      });
+
+      // -------------------------
+      // Record → STT → Clone
+      // -------------------------
+      let mediaRecorder = null;
+      let recChunks = [];
+      let recBlob = null;
+      let recObjectUrl = null;
+
+      const recStartBtn = document.getElementById("recStart");
+      const recStopBtn = document.getElementById("recStop");
+      const recFileInput = document.getElementById("recFile");
+      const recAudio = document.getElementById("recAudio");
+      const recTranscribeBtn = document.getElementById("recTranscribe");
+      const recCreateBtn = document.getElementById("recCreateVoice");
+      const recOut = document.getElementById("recOut");
+      const recTranscript = document.getElementById("recTranscript");
+
+      function revokeRecAudioUrl() {
+        if (recObjectUrl) {
+          URL.revokeObjectURL(recObjectUrl);
+          recObjectUrl = null;
+        }
+      }
+
+      function setRecPreview(blob) {
+        revokeRecAudioUrl();
+        if (!blob || !blob.size) {
+          recAudio.removeAttribute("src");
+          return;
+        }
+        recObjectUrl = URL.createObjectURL(blob);
+        recAudio.src = recObjectUrl;
+      }
+
+      /** Имя файла для multipart: у загруженного File — реальное имя, у записи с микрофона — по MIME. */
+      function recFormFilename(kind) {
+        const prefix = kind === "clone" ? "voice" : "recording";
+        if (recBlob instanceof File && recBlob.name) return recBlob.name;
+        if (!recBlob) return `${prefix}.webm`;
+        const t = (recBlob.type || "").toLowerCase();
+        if (t.includes("ogg")) return `${prefix}.ogg`;
+        if (t.includes("wav")) return `${prefix}.wav`;
+        if (t.includes("mpeg") || t.includes("mp3")) return `${prefix}.mp3`;
+        if (t.includes("mp4") || t.includes("m4a")) return `${prefix}.m4a`;
+        return `${prefix}.webm`;
+      }
+
+      recFileInput.addEventListener("change", () => {
+        const f = recFileInput.files && recFileInput.files[0];
+        recOut.textContent = "";
+        if (!f) {
+          recBlob = null;
+          setRecPreview(null);
+          recTranscribeBtn.disabled = true;
+          recCreateBtn.disabled = true;
+          return;
+        }
+        recBlob = f;
+        setRecPreview(f);
+        recTranscribeBtn.disabled = false;
+        recCreateBtn.disabled = false;
+        recOut.textContent = `loaded ${f.name} (${Math.round(f.size / 1024)} KB)`;
+      });
+
+      recStartBtn.addEventListener("click", async () => {
+        recOut.textContent = "";
+        recTranscript.value = "";
+        recChunks = [];
+        recBlob = null;
+        recFileInput.value = "";
+        setRecPreview(null);
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const options = {};
+        // try to prefer opus/webm for Chrome
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          options.mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) {
+          options.mimeType = "audio/ogg;codecs=opus";
+        }
+        mediaRecorder = new MediaRecorder(stream, options);
+        mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+        mediaRecorder.onstop = () => { stream.getTracks().forEach(t => t.stop()); };
+
+        mediaRecorder.start();
+        recStartBtn.disabled = true;
+        recStopBtn.disabled = false;
+        recTranscribeBtn.disabled = true;
+        recCreateBtn.disabled = true;
+        recOut.textContent = "recording…";
+      });
+
+      recStopBtn.addEventListener("click", async () => {
+        if (!mediaRecorder) return;
+        mediaRecorder.stop();
+        recStopBtn.disabled = true;
+        recStartBtn.disabled = false;
+        await new Promise(r => setTimeout(r, 200));
+        recBlob = new Blob(recChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+        recFileInput.value = "";
+        setRecPreview(recBlob);
+        recTranscribeBtn.disabled = false;
+        recCreateBtn.disabled = false;
+        recOut.textContent = `recorded ${Math.round(recBlob.size/1024)} KB (${recBlob.type})`;
+      });
+
+      recTranscribeBtn.addEventListener("click", async () => {
+        if (!recBlob) return;
+        recOut.textContent = "transcribing…";
+        const fd = new FormData();
+        fd.append("model", document.getElementById("recSttModel").value);
+        const lang = document.getElementById("recSttLang").value.trim();
+        if (lang) fd.append("language", lang);
+        fd.append("audio", recBlob, recFormFilename("stt"));
+        const res = await fetch("/api/stt", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!data.ok) {
+          recOut.textContent = JSON.stringify(data, null, 2);
+          return;
+        }
+        recTranscript.value = data.text || "";
+        recOut.textContent = "ok";
+      });
+
+      recCreateBtn.addEventListener("click", async () => {
+        if (!recBlob) return;
+        recOut.textContent = "creating voiceprint…";
+        const fd = new FormData();
+        fd.append("target_model", document.getElementById("recTargetModel").value);
+        fd.append("preferred_name", document.getElementById("recPreferredName").value);
+        const tr = document.getElementById("recTranscript").value.trim();
+        if (tr) fd.append("transcript", tr);
+        fd.append("audio", recBlob, recFormFilename("clone"));
+        const res = await fetch("/api/voice-clone", { method: "POST", body: fd });
+        const data = await res.json();
+        recOut.textContent = JSON.stringify(data, null, 2);
+        if (data.ok) setTimeout(() => location.reload(), 800);
+      });
+
+      // -------------------------
+      // Realtime STT WebSocket (mic -> PCM16@16k -> /ws/stt)
+      // -------------------------
+      let asrWs = null;
+      let asrAudioCtx = null;
+      let asrProcessor = null;
+      let asrMicStream = null;
+      let asrSource = null;
+      /** Avoid sending audio before `start`: ScriptProcessor can run on another thread while WS is OPEN but before `onopen`. */
+      let asrStreamToServer = false;
+
+      const asrStartBtn = document.getElementById("asrStart");
+      const asrStopBtn = document.getElementById("asrStop");
+      const asrPartial = document.getElementById("asrPartial");
+      const asrFinal = document.getElementById("asrFinal");
+      const asrStatus = document.getElementById("asrStatus");
+
+      function floatToPcm16MonoLeBase64(f32) {
+        const buf = new ArrayBuffer(f32.length * 2);
+        const view = new DataView(buf);
+        for (let i = 0; i < f32.length; i++) {
+          let s = f32[i];
+          s = Math.max(-1, Math.min(1, s));
+          view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        }
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        }
+        return btoa(binary);
+      }
+
+      function resampleLinear(f32In, inRate, outRate) {
+        if (inRate === outRate) return f32In;
+        const ratio = inRate / outRate;
+        const outLen = Math.max(1, Math.floor(f32In.length / ratio));
+        const out = new Float32Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          const x = i * ratio;
+          const x0 = Math.floor(x);
+          const x1 = Math.min(x0 + 1, f32In.length - 1);
+          const t = x - x0;
+          out[i] = f32In[x0] * (1 - t) + f32In[x1] * t;
+        }
+        return out;
+      }
+
+      function cleanupAsrAudio() {
+        asrStreamToServer = false;
+        try { if (asrProcessor) asrProcessor.disconnect(); } catch (e) {}
+        try { if (asrSource) asrSource.disconnect(); } catch (e) {}
+        asrProcessor = null;
+        asrSource = null;
+        try { if (asrMicStream) asrMicStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        asrMicStream = null;
+        try { if (asrAudioCtx) asrAudioCtx.close(); } catch (e) {}
+        asrAudioCtx = null;
+      }
+
+      let vcSession = false;
+      /** Пока true — разрешаем запуск Realtime STT даже при активном голосовом чате (иначе click() сразу выходит по vcSession). */
+      window.__vcBootstrapAsr = false;
+
+      asrStartBtn.addEventListener("click", async () => {
+        if (asrWs) return;
+        if (vcSession && !window.__vcBootstrapAsr) {
+          asrStatus.textContent = "Сначала останови голосовой чат (pipeline).";
+          return;
+        }
+        asrPartial.textContent = "";
+        asrFinal.textContent = "";
+        asrStatus.textContent = "starting…";
+
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        asrAudioCtx = new AudioCtx();
+        asrMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        asrSource = asrAudioCtx.createMediaStreamSource(asrMicStream);
+
+        const bufferSize = 4096;
+        asrProcessor = asrAudioCtx.createScriptProcessor(bufferSize, 1, 1);
+        const inRate = asrAudioCtx.sampleRate;
+        const outRate = 16000;
+
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        asrStreamToServer = false;
+        asrWs = new WebSocket(`${proto}://${location.host}/ws/stt`);
+
+        asrWs.onopen = () => {
+          asrStatus.textContent = "ws open";
+          const langEl = vcSession ? document.getElementById("vcAsrLang") : document.getElementById("asrLang");
+          const modelEl = vcSession ? document.getElementById("vcAsrModel") : document.getElementById("asrModel");
+          const lang = langEl ? langEl.value : "";
+          asrWs.send(JSON.stringify({
+            type: "start",
+            model: modelEl ? modelEl.value : "qwen3-asr-flash-realtime",
+            language: lang,
+            input_sample_rate: outRate
+          }));
+          // First server frame must be `start`; mic graph only after that (see asrStreamToServer).
+          asrStreamToServer = true;
+          try {
+            asrSource.connect(asrProcessor);
+            asrProcessor.connect(asrAudioCtx.destination);
+          } catch (e) {
+            asrStatus.textContent = "audio graph: " + e;
+          }
+          if (asrAudioCtx.state !== "running") asrAudioCtx.resume().catch(() => {});
+        };
+
+        asrWs.onmessage = (ev) => {
+          const msg = JSON.parse(ev.data);
+          try {
+            if (typeof window.__vcOnAsr === "function") window.__vcOnAsr(msg);
+          } catch (e) { console.warn(e); }
+          if (msg.type === "ready") {
+            asrStatus.textContent = "ready (sending audio)";
+          } else if (msg.type === "partial") {
+            asrPartial.textContent = msg.text || "";
+          } else if (msg.type === "final") {
+            const t = (msg.text || "").trim();
+            if (!t) return;
+            asrFinal.textContent = (asrFinal.textContent ? asrFinal.textContent + "\n" : "") + t;
+            asrPartial.textContent = "";
+          } else if (msg.type === "error") {
+            asrStatus.textContent = "error: " + msg.error;
+          }
+        };
+
+        asrWs.onclose = () => {
+          asrStatus.textContent += "\nclosed";
+          asrWs = null;
+          if (vcSession) {
+            vcSession = false;
+            window.__vcOnAsr = null;
+            vcStartBtn.disabled = false;
+            vcStopBtn.disabled = true;
+            asrStartBtn.disabled = false;
+            vcCloseTts();
+            vcSetStep("idle");
+            vcPipelineStatus.textContent = (vcPipelineStatus.textContent || "") + "\nSTT закрыт — сценарий остановлен.";
+          }
+          cleanupAsrAudio();
+          asrStartBtn.disabled = false;
+          asrStopBtn.disabled = true;
+        };
+
+        asrProcessor.onaudioprocess = (e) => {
+          if (!asrStreamToServer || !asrWs || asrWs.readyState !== WebSocket.OPEN) return;
+          const input = e.inputBuffer.getChannelData(0);
+          const f16 = resampleLinear(input, inRate, outRate);
+          const b64 = floatToPcm16MonoLeBase64(f16);
+          asrWs.send(JSON.stringify({ type: "audio", pcm_b64: b64 }));
+        };
+
+        if (asrAudioCtx.state !== "running") await asrAudioCtx.resume();
+
+        asrStartBtn.disabled = true;
+        asrStopBtn.disabled = false;
+      });
+
+      asrStopBtn.addEventListener("click", async () => {
+        if (!asrWs) return;
+        try { asrWs.send(JSON.stringify({ type: "finish" })); } catch (e) {}
+        try { asrWs.close(); } catch (e) {}
+      });
+
+      // -------------------------
+      // Voice chat pipeline (STT → sentence → LLM stream → TTS by sentence)
+      // -------------------------
+      let vcTtsWs = null;
+      let vcPlayer = null;
+      /** Финальные сегменты STT, ещё не ушедшие в LLM (очищаются после flush). */
+      let vcPendingFinalsForLlm = [];
+      /** Последний live partial (учитывается в flush после тишины). */
+      let vcLivePartialForLlm = "";
+      /** Накопленные финалы за сессию (черновик «Final segments»). */
+      let vcConfirmedAsr = "";
+      let vcChatMessages = [];
+      let vcTurnChain = Promise.resolve();
+      let vcLlmDebounceTimer = null;
+      let vcLlmAbort = null;
+      let vcLlmRunning = false;
+      const vcPipelineStatus = document.getElementById("vcPipelineStatus");
+      const vcStartBtn = document.getElementById("vcStart");
+      const vcStopBtn = document.getElementById("vcStop");
+      const vcStopGenBtn = document.getElementById("vcStopGen");
+      const vcStopSoundBtn = document.getElementById("vcStopSound");
+      const vcChatEl = document.getElementById("vcChat");
+      const vcDraftEl = document.getElementById("vcDraft");
+
+      function vcGetSttQuietMs() {
+        const el = document.getElementById("vcSttQuietMs");
+        const n = parseInt(el && el.value, 10);
+        return Number.isFinite(n) ? Math.max(0, Math.min(10000, n)) : 300;
+      }
+
+      function vcIsVoiceOutputDisabled() {
+        const el = document.getElementById("vcDisableVoice");
+        return !!(el && el.checked);
+      }
+
+      function vcIsLlmDisabled() {
+        const el = document.getElementById("vcDisableLlm");
+        return !!(el && el.checked);
+      }
+
+      function vcClearPcmQueue() {
+        try {
+          if (vcPlayer && typeof vcPlayer.clearQueue === "function") vcPlayer.clearQueue();
+        } catch (e) {}
+      }
+
+      function vcStopLlmGeneration(reason) {
+        if (vcLlmAbort) {
+          try {
+            vcLlmAbort.abort();
+          } catch (e) {}
+          vcLlmAbort = null;
+        }
+        if (reason && vcSession) vcPipelineStatus.textContent = reason;
+      }
+
+      function vcMaybeInterruptOnNewSpeech(isPartial) {
+        if (!vcSession) return;
+        const stopGen = document.getElementById("vcInterruptGen") && document.getElementById("vcInterruptGen").checked;
+        const stopSound = document.getElementById("vcInterruptSound") && document.getElementById("vcInterruptSound").checked;
+        if (!stopGen && !stopSound) return;
+        const speech = isPartial ? (vcLivePartialForLlm || "").trim().length > 0 : true;
+        if (isPartial && !speech) return;
+        const busy = vcLlmRunning || (vcPlayer && vcPlayer.hasBuffer && vcPlayer.hasBuffer());
+        if (!busy) return;
+        if (stopSound) vcClearPcmQueue();
+        if (stopGen) vcStopLlmGeneration("Прервано: новая речь");
+      }
+
+      function vcUpdateDraftUi() {
+        const fin = vcPendingFinalsForLlm.join("\n").trim() || "—";
+        const p = (vcLivePartialForLlm || "").trim() || "…";
+        vcDraftEl.textContent = "Live partial: " + p + "\nFinal (ожид. LLM): " + fin + "\nВсе финалы сессии:\n" + (vcConfirmedAsr || "—");
+      }
+
+      function vcScheduleLlmFlush() {
+        if (!vcSession) return;
+        if (vcLlmDebounceTimer) clearTimeout(vcLlmDebounceTimer);
+        vcLlmDebounceTimer = setTimeout(() => {
+          vcLlmDebounceTimer = null;
+          vcFlushPendingUserToLlm();
+        }, vcGetSttQuietMs());
+      }
+
+      function vcFlushPendingUserToLlm() {
+        const finals = vcPendingFinalsForLlm.join(" ").replace(/\s+/g, " ").trim();
+        const trail = (vcLivePartialForLlm || "").replace(/\s+/g, " ").trim();
+        const userText = (finals + (finals && trail ? " " : "") + trail).trim();
+        if (!userText) return;
+        vcPendingFinalsForLlm = [];
+        vcLivePartialForLlm = "";
+        vcUpdateDraftUi();
+        if (vcIsLlmDisabled()) {
+          const preview = userText.length > 280 ? userText.slice(0, 280) + "…" : userText;
+          vcAddNote("LLM отключён — запрос не отправлен. Распознано: " + preview);
+          if (vcSession) vcPipelineStatus.textContent = "LLM выкл, жду речь…";
+          vcSetStep("stt");
+          return;
+        }
+        vcTurnChain = vcTurnChain.catch(() => {}).then(() => vcRunLlmStreamToChatAndTts(userText));
+      }
+
+      function vcSetStep(step) {
+        document.querySelectorAll("#vcFlow .flow-step").forEach((el) => {
+          el.classList.toggle("on", el.getAttribute("data-vc-step") === step);
+        });
+      }
+
+      function vcScrollChat() {
+        vcChatEl.scrollTop = vcChatEl.scrollHeight;
+      }
+
+      function vcAddUserBubble(text) {
+        const d = document.createElement("div");
+        d.className = "chat-msg user";
+        d.textContent = "Вы: " + text;
+        vcChatEl.appendChild(d);
+        vcScrollChat();
+      }
+
+      function vcAddNote(text) {
+        const d = document.createElement("div");
+        d.className = "chat-msg note";
+        d.textContent = text;
+        vcChatEl.appendChild(d);
+        vcScrollChat();
+      }
+
+      /** Готовые предложения для TTS из потока ответа LLM (не ждём конца генерации). */
+      function pullCompleteSentences(s) {
+        const sentences = [];
+        let i = 0;
+        while (i < s.length) {
+          let found = -1;
+          for (let j = i; j < s.length; j++) {
+            const c = s[j];
+            if (c === "\n" || ".!?。！？".includes(c) || c === "…") {
+              found = j;
+              break;
+            }
+          }
+          if (found < 0) break;
+          let k = found + 1;
+          if (s[found] !== "\n") {
+            while (k < s.length && ".!?。！？…".includes(s[k])) k++;
+          }
+          const piece = s.slice(i, k).trim();
+          if (piece) sentences.push(piece);
+          i = k;
+          while (i < s.length && /\s/.test(s[i])) i++;
+        }
+        return { sentences, rest: s.slice(i) };
+      }
+
+      function vcDrainTtsBuffer(buf) {
+        const { sentences, rest } = pullCompleteSentences(buf);
+        const voiceOff = vcIsVoiceOutputDisabled();
+        for (const sent of sentences) {
+          if (voiceOff) continue;
+          if (vcTtsWs && vcTtsWs.readyState === WebSocket.OPEN) {
+            if (vcPlayer) vcPlayer.resume().catch(() => {});
+            vcSetStep("tts");
+            vcTtsWs.send(JSON.stringify({ type: "text", text: sent }));
+          }
+        }
+        return rest;
+      }
+
+      async function vcRunLlmStreamToChatAndTts(userText) {
+        const ut = (userText || "").trim();
+        if (!ut) return;
+        if (vcIsLlmDisabled()) {
+          vcAddNote("LLM отключён — пропуск вызова модели.");
+          vcSetStep("stt");
+          return;
+        }
+        vcSetStep("sentence");
+        vcAddNote("Запрос в LLM (после паузы STT)");
+        vcSetStep("llm");
+
+        const myAbort = new AbortController();
+        vcLlmAbort = myAbort;
+        vcLlmRunning = true;
+
+        vcChatMessages.push({ role: "user", content: ut });
+        vcAddUserBubble(ut);
+
+        const assistantEl = document.createElement("div");
+        assistantEl.className = "chat-msg assistant";
+        assistantEl.textContent = "Ассистент: ";
+        vcChatEl.appendChild(assistantEl);
+        vcScrollChat();
+
+        let full = "";
+        let ttsBuf = "";
+
+        function finalizeAssistantOrAbort() {
+          if (full.trim()) {
+            vcChatMessages.push({ role: "assistant", content: full });
+            assistantEl.textContent = "Ассистент: " + full;
+          } else {
+            try {
+              vcChatEl.removeChild(assistantEl);
+            } catch (e) {}
+          }
+        }
+
+        try {
+          const res = await fetch("/api/llm/stream", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: vcChatMessages, temperature: 0.7 }),
+            signal: myAbort.signal,
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            vcChatMessages.pop();
+            try {
+              const prev = assistantEl.previousElementSibling;
+              if (prev) vcChatEl.removeChild(prev);
+              vcChatEl.removeChild(assistantEl);
+            } catch (e) {}
+            vcAddNote("LLM ошибка: " + res.status + " " + errText);
+            vcSetStep("stt");
+            return;
+          }
+
+          const reader = res.body.getReader();
+          const dec = new TextDecoder();
+          let carry = "";
+
+          function processSseLine(line) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) return false;
+            const payload = trimmed.slice(5).trim();
+            if (!payload || payload === "[DONE]") return false;
+            let j;
+            try {
+              j = JSON.parse(payload);
+            } catch {
+              return false;
+            }
+            if (j && j.object === "voiceagent.error") {
+              vcAddNote("LLM: " + (j.message || JSON.stringify(j)));
+              vcSetStep("stt");
+              return true;
+            }
+            const delta = (((j.choices || [])[0] || {}).delta || {}).content;
+            if (delta == null || delta === "") return false;
+            full += delta;
+            assistantEl.textContent = "Ассистент: " + full;
+            vcScrollChat();
+            ttsBuf += delta;
+            ttsBuf = vcDrainTtsBuffer(ttsBuf);
+            return false;
+          }
+
+          while (!myAbort.signal.aborted) {
+            let readResult;
+            try {
+              readResult = await reader.read();
+            } catch (e) {
+              if (myAbort.signal.aborted || e.name === "AbortError") break;
+              throw e;
+            }
+            const { value, done } = readResult;
+            if (done) break;
+            carry += dec.decode(value, { stream: true });
+            const lines = carry.split("\n");
+            carry = lines.pop() || "";
+            for (const ln of lines) {
+              if (myAbort.signal.aborted) break;
+              if (processSseLine(ln)) {
+                vcChatMessages.pop();
+                try {
+                  const prev = assistantEl.previousElementSibling;
+                  if (prev) vcChatEl.removeChild(prev);
+                  vcChatEl.removeChild(assistantEl);
+                } catch (e) {}
+                return;
+              }
+            }
+          }
+          if (!myAbort.signal.aborted && carry.trim()) {
+            for (const ln of carry.split("\n")) {
+              if (myAbort.signal.aborted) break;
+              if (processSseLine(ln)) {
+                vcChatMessages.pop();
+                try {
+                  const prev = assistantEl.previousElementSibling;
+                  if (prev) vcChatEl.removeChild(prev);
+                  vcChatEl.removeChild(assistantEl);
+                } catch (e) {}
+                return;
+              }
+            }
+          }
+          if (myAbort.signal.aborted) {
+            finalizeAssistantOrAbort();
+            vcSetStep("stt");
+            return;
+          }
+          ttsBuf = vcDrainTtsBuffer(ttsBuf);
+          const tail = ttsBuf.trim();
+          if (tail && !vcIsVoiceOutputDisabled() && vcTtsWs && vcTtsWs.readyState === WebSocket.OPEN) {
+            if (vcPlayer) vcPlayer.resume().catch(() => {});
+            vcSetStep("tts");
+            vcTtsWs.send(JSON.stringify({ type: "text", text: tail }));
+          }
+          if (full.trim()) {
+            vcChatMessages.push({ role: "assistant", content: full });
+          } else {
+            try {
+              vcChatEl.removeChild(assistantEl);
+            } catch (e) {}
+          }
+        } catch (e) {
+          if (e.name === "AbortError" || myAbort.signal.aborted) {
+            finalizeAssistantOrAbort();
+          } else {
+            vcChatMessages.pop();
+            try {
+              const prev = assistantEl.previousElementSibling;
+              if (prev) vcChatEl.removeChild(prev);
+              vcChatEl.removeChild(assistantEl);
+            } catch (err) {}
+            vcAddNote("LLM: " + e);
+          }
+        } finally {
+          vcLlmRunning = false;
+          if (vcLlmAbort === myAbort) vcLlmAbort = null;
+          vcSetStep("stt");
+        }
+      }
+
+      async function vcOpenTts() {
+        if (vcTtsWs) return;
+        vcPipelineStatus.textContent = "TTS: подключение…";
+        if (!vcPlayer) {
+          vcPlayer = makePcmPlayer(24000);
+          await vcPlayer.resume();
+        }
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        vcTtsWs = new WebSocket(`${proto}://${location.host}/ws/tts`);
+        vcTtsWs.onmessage = (ev) => {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === "ready") vcPipelineStatus.textContent = "TTS готов";
+          else if (msg.type === "audio") {
+            if (vcPlayer) vcPlayer.resume().catch(() => {});
+            try {
+              vcPlayer.pushInt16Pcm(msg.pcm_b64);
+            } catch (e) {
+              vcPipelineStatus.textContent = "TTS аудио-чанк: " + e;
+            }
+          } else if (msg.type === "error") vcPipelineStatus.textContent = "TTS: " + msg.error;
+        };
+        await new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error("TTS connect timeout")), 20000);
+          vcTtsWs.onopen = () => {
+            clearTimeout(t);
+            vcTtsWs.send(
+              JSON.stringify({
+                type: "start",
+                model: document.getElementById("vcTtsModel").value,
+                voice: document.getElementById("vcTtsVoice").value,
+                language_type: document.getElementById("vcTtsLangType").value,
+              }),
+            );
+            resolve();
+          };
+          vcTtsWs.onerror = () => {
+            clearTimeout(t);
+            reject(new Error("TTS ws error"));
+          };
+        });
+      }
+
+      function vcCloseTts() {
+        try {
+          if (vcTtsWs && vcTtsWs.readyState === WebSocket.OPEN) {
+            vcTtsWs.send(JSON.stringify({ type: "finish" }));
+          }
+        } catch (e) {}
+        try {
+          vcTtsWs && vcTtsWs.close();
+        } catch (e) {}
+        vcTtsWs = null;
+        if (vcPlayer) {
+          vcPlayer.close();
+          vcPlayer = null;
+        }
+      }
+
+      vcStartBtn.addEventListener("click", async () => {
+        if (vcSession) return;
+        if (asrWs) {
+          vcPipelineStatus.textContent = "Сначала останови Realtime STT (Stop), затем запусти сценарий.";
+          return;
+        }
+        if (rtWs) {
+          vcPipelineStatus.textContent = "Сначала останови тест Realtime TTS (Stop).";
+          return;
+        }
+        const voiceOff = vcIsVoiceOutputDisabled();
+        if (!voiceOff) {
+          /* Сразу после клика поднимаем AudioContext для TTS — иначе после await (микрофон / WS) браузер блокирует звук. */
+          vcPipelineStatus.textContent = "Звук: активация плеера…";
+          vcPlayer = makePcmPlayer(24000);
+          await vcPlayer.resume();
+        } else {
+          vcPipelineStatus.textContent = "Режим без TTS (только STT + LLM)…";
+        }
+
+        vcSession = true;
+        vcConfirmedAsr = "";
+        vcChatMessages = [];
+        vcTurnChain = Promise.resolve();
+        if (vcLlmDebounceTimer) {
+          clearTimeout(vcLlmDebounceTimer);
+          vcLlmDebounceTimer = null;
+        }
+        vcPendingFinalsForLlm = [];
+        vcLivePartialForLlm = "";
+        vcChatEl.innerHTML = "";
+        vcUpdateDraftUi();
+        vcPipelineStatus.textContent = "Запуск…";
+        vcSetStep("stt");
+
+        try {
+          if (!voiceOff) await vcOpenTts();
+        } catch (e) {
+          vcSession = false;
+          vcCloseTts();
+          vcPipelineStatus.textContent = "TTS: " + e;
+          vcSetStep("idle");
+          return;
+        }
+
+        vcStopGenBtn.disabled = false;
+        vcStopSoundBtn.disabled = false;
+
+        window.__vcOnAsr = (msg) => {
+          if (msg.type === "ready") {
+            if (vcPlayer) vcPlayer.resume().catch(() => {});
+            vcPipelineStatus.textContent = "STT готов, слушаю…";
+          } else if (msg.type === "partial") {
+            vcSetStep("stt");
+            vcLivePartialForLlm = msg.text || "";
+            vcMaybeInterruptOnNewSpeech(true);
+            vcUpdateDraftUi();
+            vcScheduleLlmFlush();
+          } else if (msg.type === "final") {
+            const t = (msg.text || "").trim();
+            if (!t) return;
+            vcConfirmedAsr += (vcConfirmedAsr ? "\n" : "") + t;
+            vcPendingFinalsForLlm.push(t);
+            vcLivePartialForLlm = "";
+            vcMaybeInterruptOnNewSpeech(false);
+            vcUpdateDraftUi();
+            vcScheduleLlmFlush();
+          }
+        };
+
+        vcStartBtn.disabled = true;
+        vcStopBtn.disabled = false;
+        vcPipelineStatus.textContent = "Подключение микрофона и STT…";
+        window.__vcBootstrapAsr = true;
+        try {
+          asrStartBtn.click();
+        } finally {
+          window.__vcBootstrapAsr = false;
+        }
+        asrStartBtn.disabled = true;
+        vcPipelineStatus.textContent = "Слушаю… (жду речь и сегменты ASR)";
+      });
+
+      vcStopBtn.addEventListener("click", async () => {
+        if (!vcSession) return;
+        window.__vcOnAsr = null;
+        if (vcLlmDebounceTimer) {
+          clearTimeout(vcLlmDebounceTimer);
+          vcLlmDebounceTimer = null;
+        }
+        vcStopLlmGeneration(null);
+        vcClearPcmQueue();
+        vcPendingFinalsForLlm = [];
+        vcLivePartialForLlm = "";
+        vcSession = false;
+        vcStartBtn.disabled = false;
+        vcStopBtn.disabled = true;
+        vcStopGenBtn.disabled = true;
+        vcStopSoundBtn.disabled = true;
+        asrStartBtn.disabled = false;
+        if (asrWs) {
+          try {
+            asrWs.send(JSON.stringify({ type: "finish" }));
+          } catch (e) {}
+          try {
+            asrWs.close();
+          } catch (e) {}
+        }
+        vcCloseTts();
+        vcSetStep("idle");
+        vcPipelineStatus.textContent = "Остановлено.";
+      });
+
+      vcStopGenBtn.addEventListener("click", () => {
+        if (!vcSession) return;
+        vcStopLlmGeneration("Остановка генерации (кнопка)");
+      });
+
+      vcStopSoundBtn.addEventListener("click", () => {
+        if (!vcSession) return;
+        vcClearPcmQueue();
+        vcPipelineStatus.textContent = "Очередь PCM очищена (кнопка)";
+      });
+
+      // -------------------------
+      // Realtime TTS WebSocket
+      // -------------------------
+      function makePcmPlayer(sampleRate) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx({ sampleRate });
+        const bufQ = [];
+        let cur = null;
+        let curPos = 0;
+
+        // ScriptProcessor is deprecated but simplest (no build step)
+        const node = ctx.createScriptProcessor(4096, 0, 1);
+        node.onaudioprocess = (e) => {
+          const out = e.outputBuffer.getChannelData(0);
+          out.fill(0);
+          let i = 0;
+          while (i < out.length) {
+            if (!cur || curPos >= cur.length) {
+              cur = bufQ.shift() || null;
+              curPos = 0;
+              if (!cur) break;
+            }
+            const n = Math.min(out.length - i, cur.length - curPos);
+            out.set(cur.subarray(curPos, curPos + n), i);
+            i += n;
+            curPos += n;
+          }
+        };
+        node.connect(ctx.destination);
+
+        function pushInt16Pcm(b64) {
+          const bin = atob(b64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          const view = new DataView(bytes.buffer);
+          const f32 = new Float32Array(bytes.byteLength / 2);
+          for (let i = 0; i < f32.length; i++) {
+            const s = view.getInt16(i * 2, true);
+            f32[i] = Math.max(-1, Math.min(1, s / 32768));
+          }
+          bufQ.push(f32);
+        }
+
+        async function resume() { if (ctx.state !== "running") await ctx.resume(); }
+        function clearQueue() {
+          bufQ.length = 0;
+          cur = null;
+          curPos = 0;
+        }
+        function hasBuffer() {
+          return bufQ.length > 0 || (cur != null && curPos < (cur ? cur.length : 0));
+        }
+        function close() { try { node.disconnect(); } catch(e) {} ctx.close(); }
+        return { pushInt16Pcm, resume, clearQueue, hasBuffer, close };
+      }
+
+      let rtWs = null;
+      let rtPlayer = null;
+      const rtOut = document.getElementById("rtOut");
+
+      function splitSentences(text) {
+        const parts = [];
+        let buf = "";
+        for (const ch of text) {
+          buf += ch;
+          if (ch === "." || ch === "!" || ch === "?" || ch === "。" || ch === "！" || ch === "？" || ch === "\n") {
+            const t = buf.trim();
+            if (t) parts.push(t);
+            buf = "";
+          }
+        }
+        const tail = buf.trim();
+        if (tail) parts.push(tail);
+        return parts;
+      }
+
+      document.getElementById("rtStart").addEventListener("click", async () => {
+        if (rtWs) return;
+        if (vcSession) {
+          rtOut.textContent = "Сначала останови голосовой чат (pipeline).";
+          return;
+        }
+        rtOut.textContent = "connecting…";
+        rtPlayer = makePcmPlayer(24000);
+        await rtPlayer.resume();
+
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        rtWs = new WebSocket(`${proto}://${location.host}/ws/tts`);
+
+        rtWs.onopen = () => {
+          rtOut.textContent = "ws open";
+          rtWs.send(JSON.stringify({
+            type: "start",
+            model: document.getElementById("rtModel").value,
+            voice: document.getElementById("rtVoice").value,
+            language_type: document.getElementById("rtLanguageType").value
+          }));
+        };
+        rtWs.onmessage = (ev) => {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === "ready") {
+            rtOut.textContent = "ready";
+          } else if (msg.type === "audio") {
+            rtPlayer.pushInt16Pcm(msg.pcm_b64);
+          } else if (msg.type === "error") {
+            rtOut.textContent = "error: " + msg.error;
+          }
+        };
+        rtWs.onclose = () => {
+          rtOut.textContent += "\nclosed";
+          rtWs = null;
+          if (rtPlayer) { rtPlayer.close(); rtPlayer = null; }
+        };
+      });
+
+      document.getElementById("rtSend").addEventListener("click", async () => {
+        if (!rtWs) return;
+        const text = document.getElementById("rtText").value;
+        const parts = splitSentences(text);
+        for (const p of parts) {
+          rtWs.send(JSON.stringify({ type: "text", text: p }));
+        }
+      });
+
+      document.getElementById("rtStop").addEventListener("click", async () => {
+        if (!rtWs) return;
+        rtWs.send(JSON.stringify({ type: "finish" }));
+        rtWs.close();
+      });
+
+      vcSetStep("idle");
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,23 @@
+# Qwen ASR realtime — one file = one registered profile.
+# Required: public_ids, api_key_env, ws_url, upstream_model, defaults.* (see loader).
+# Override directory: STT_QWEN_TEMPLATE_DIR=/path/to/dir
+
+public_ids:
+  - qwen3-asr-flash-realtime
+  - qwen-stt
+
+api_key_env: STT_QWEN_REALTIME_API_KEY
+
+ws_url: wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime
+upstream_model: qwen3-asr-flash-realtime
+
+defaults:
+  language: ru
+  sample_rate: 16000
+  vad_threshold: 0.2
+  vad_silence_ms: 800
+  vad_prefix_padding_ms: 300
+
+from_client:
+  language: optional
+  sample_rate: optional

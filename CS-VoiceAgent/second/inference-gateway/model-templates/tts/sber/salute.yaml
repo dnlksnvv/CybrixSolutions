@@ -1,0 +1,32 @@
+# Sber SaluteSpeech gRPC Synthesize — один файл = один зарегистрируемый профиль.
+# Секрет: значение в окружении по имени credentials_env (обязательное поле).
+
+public_ids:
+  - salute
+  # Исторический/удобный id из Workers .env (TTS_MODEL=sber-salute)
+  - sber-salute
+
+credentials_env: TTS_SALUTE_CREDENTIALS
+
+scope: SALUTE_SPEECH_PERS
+oauth_url: https://ngw.devices.sberbank.ru:9443/api/v2/oauth
+grpc_addr: smartspeech.sber.ru:443
+
+# Optional absolute or template-relative path to PEM bundle.
+# On macOS with Russian root CA this is usually required when verify_tls=true.
+ca_bundle_file: ../../../certs/russian_trusted_root_ca.pem
+# Alternative: store PEM text in env and set variable name here.
+# If set, it has priority over ca_bundle_file.
+# ca_bundle_pem_env: TTS_SALUTE_CA_BUNDLE_PEM
+
+defaults:
+  voice: Bys_24000
+  language: ru-RU
+  format: pcm16
+  sample_rate: 24000
+  verify_tls: true
+# default | optional | required — как в qwen-realtime (session.start может переопределять)
+from_client:
+  voice: optional
+  sample_rate: default
+  format: default

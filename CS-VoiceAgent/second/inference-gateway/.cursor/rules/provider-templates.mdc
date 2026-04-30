@@ -1,0 +1,48 @@
+---
+description: How to add a new model provider implementation
+globs: **/inference-gateway/internal/services/{llm,tts,stt}/**/*.go
+alwaysApply: false
+---
+
+# Provider templates
+
+Один файл = одна модель/один upstream API. Файл провайдера НЕ импортирует `transport` и НЕ читает `.env` напрямую.
+
+## Interfaces (объявлены в `internal/services/{llm,tts,stt}/iface.go`)
+
+- LLM: `Chat(ctx, ChatRequest) (ChatStream, error)`
+- TTS: `Synthesize(ctx, TTSSession) (TTSStream, error)`
+- STT: `Recognize(ctx, STTSession) (STTStream, error)`
+
+`*Stream` — это `<-chan v1.Event` + `Close(error)` для graceful shutdown.
+
+## Pattern (Go, пример LLM)
+
+```go
+package llm
+
+type qwenLLM struct {
+    apiKey  string
+    baseURL string
+    http    *http.Client
+}
+
+func NewQwenLLM(cfg config.Provider, http *http.Client) *qwenLLM {
+    return &qwenLLM{apiKey: cfg.APIKey, baseURL: cfg.BaseURL, http: http}
+}
+
+func (p *qwenLLM) Chat(ctx context.Context, req ChatRequest) (ChatStream, error) {
+    body := mapToUpstream(req)
+    resp, err := p.http.Do(buildReq(ctx, p.baseURL, p.apiKey, body))
+    if err != nil { return nil, fmt.Errorf("qwen chat: %w", err) }
+    return newStreamReader(resp.Body), nil
+}
+```
+
+## Rules
+- Конструктор принимает уже-разобранный `config.Provider`, не env.
+- Регистрация в `internal/registry`: `registry.RegisterLLM("giga-chat", NewGigaChat(cfg, http))`.
+- Маппинг v1 → upstream и upstream → v1 — в том же файле провайдера или в `<model>_mapper.go` рядом.
+- Ошибки заворачивать в `provider.Error{Code: "UPSTREAM_TIMEOUT"|...}`. Сервис уже отдаст это как v1 `error`.
+- Никакой бизнес-логики поверх HTTP/WS клиента — только перевод форматов и проксирование стрима.
+- Любой goroutine в провайдере должен завершаться по `ctx.Done()`.

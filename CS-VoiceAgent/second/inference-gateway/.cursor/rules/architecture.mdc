@@ -1,0 +1,53 @@
+---
+description: Folder layout and clean-architecture boundaries
+alwaysApply: true
+---
+
+# Architecture
+
+Слои: **transport → registry → modality service (llm/tts/stt) → upstream**. Провайдеры по вендору — подпакеты (`llm/sber`, `llm/qwen`, `tts/qwen`, `tts/sber`, …), без импорта `transport`.
+
+## Layout
+
+```
+inference-gateway/
+  cmd/server/main.go             # entrypoint, DI wiring
+  internal/
+    config/                      # env loading (секреты TTS — через YAML *credentials_env)
+    protocol/v1/                 # envelope structs (LLM/TTS/STT)
+    transport/
+      http/                      # HTTP handlers (LLM)
+      ws/                        # WebSocket handlers (TTS, STT)
+    services/
+      llm/
+        iface.go                 # контракт модальности (не transport)
+        openaicompat/            # SSE-клиент к upstream chat/completions
+        sber/                    # GigaChat + YAML llm/sber
+        qwen/                    # DashScope LLM + YAML llm/qwen
+      stt/
+        iface.go
+        qwen/                    # profiles, policy, realtime (DashScope WS)
+      tts/
+        iface.go
+        qwen/                    # profiles, policy, realtime (DashScope WS)
+        sber/                    # profiles, policy, synth (Salute REST)
+    dashscopews/                 # общий WS-клиент DashScope
+    eventbus/
+    sberauth/
+    registry/                    # model_id -> provider impl
+    logger/
+  model-templates/
+    llm/sber/*.yaml
+    llm/qwen/*.yaml
+    stt/qwen-realtime/*.yaml
+    tts/qwen-realtime/*.yaml
+    tts/sber/*.yaml
+  .env.example
+  go.mod
+```
+
+## Rules
+- `transport/*` — граница с **клиентом гейтвея** (HTTP/WS), парсинг запросов и ответов. К upstream (DashScope, GigaChat, Salute) ходят только `services/*`. Провайдеры — через `registry`.
+- `services/<m>` — контракт модальности (`iface.go`) и реализации; LLM/TTS/STT по upstream — в `services/llm/<vendor>/`, `services/tts/<vendor>/`, `services/stt/<vendor>/`.
+- Новая модель: YAML в `model-templates/<modality>/...` (LLM: `llm/sber`, `llm/qwen`; STT/TTS как в layout) и при необходимости код в `services/.../<vendor>/` + регистрация в `main`. Не тянуть `transport` в сервисы.
+- DI через конструкторы, без глобалов и `init()`-сайд-эффектов.

@@ -1,0 +1,23 @@
+# Qwen TTS realtime — voice clone. Same protocol, different upstream_model / policies.
+
+public_ids:
+  - qwen3-tts-vc-realtime-2026-01-15
+  - qwen-tts-vc
+
+api_key_env: TTS_QWEN_API_KEY
+
+ws_url: wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime
+upstream_model: qwen3-tts-vc-realtime-2026-01-15
+
+defaults:
+  voice: ""
+  language_type: Auto
+  mode: commit
+  sample_rate: 24000
+  response_format: pcm
+
+from_client:
+  voice: required
+  language_type: default
+  mode: default
+  sample_rate: default

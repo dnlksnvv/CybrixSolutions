@@ -1,0 +1,25 @@
+# Qwen TTS realtime — preset / flash. One file = one registered profile.
+# Required: public_ids, api_key_env, ws_url, upstream_model, defaults.* (see loader).
+
+public_ids:
+  - qwen3-tts-flash-realtime
+  - qwen-tts-flash
+
+api_key_env: TTS_QWEN_API_KEY
+
+ws_url: wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime
+upstream_model: qwen3-tts-flash-realtime
+
+defaults:
+  voice: Cherry
+  language_type: Auto
+  mode: server_commit
+  sample_rate: 24000
+  response_format: pcm
+
+# default = only defaults.* | optional = client may override | required = session.start must set
+from_client:
+  voice: optional
+  language_type: default
+  mode: default
+  sample_rate: default

@@ -1,0 +1,31 @@
+---
+description: Model registry and .env-driven config
+alwaysApply: true
+---
+
+# Registry & config
+
+## Registry (`internal/registry`)
+
+In-memory map: `model_id (string) → provider impl`. Заполняется один раз в `cmd/server/main.go` после загрузки `config`.
+
+```go
+reg := registry.New()
+// LLM Sber (GigaChat): llm/sber.LoadProfiles() → RegisterLLM (model-templates/llm/sber/*.yaml)
+// LLM Qwen: llm/qwen.LoadProfiles() → RegisterLLM (model-templates/llm/qwen/*.yaml)
+// Qwen STT: stt/qwen.LoadQwenProfiles() → RegisterSTT (model-templates/stt/qwen-realtime/*.yaml)
+// Qwen TTS: tts/qwen.LoadQwenProfiles() → RegisterTTS
+// Sber TTS: tts/sber.LoadSberProfiles() → RegisterTTS (model-templates/tts/sber/*.yaml)
+```
+
+Сервисы делают только `reg.LLM(model)` / `reg.TTS(model)` / `reg.STT(model)`.
+
+## Config (`internal/config`)
+
+- `Config` содержит **HTTP + глобальные таймауты**. Провайдерские URL/модели для LLM/STT/Qwen TTS задаются **YAML-шаблонами** под `model-templates/`, не через поля `Load()`.
+- DTO для LLM (`LLMGigaChatConfig`, `LLMQwenConfig`) остаются в `config` — YAML собирают `internal/services/llm/sber/profiles.go` и `internal/services/llm/qwen/profiles.go`, далее `NewGigaChat` / `NewQwen`.
+- Секреты: имена переменных задаются в YAML (`credentials_env`, `api_key_env`); значения читает **loader профиля** (`os.Getenv`). Исключение из правила «только config читает env».
+
+## Rules
+- Имена моделей в реестре — стабильные публичные ID (`public_ids` в YAML).
+- Профиль без креденшелов в env пропускается при регистрации (skip), не fatal.
