@@ -34,7 +34,6 @@ def create_session(
     speed_factor: float = 1.0,
     turn_handling: TurnHandlingOptions | None = None,
     extra_kwargs: dict[str, Any] | None = None,
-    can_pause_audio: bool = False,
 ) -> AgentSession:
     user_speeches = actions.get_user_speeches(speed_factor=speed_factor)
     llm_responses = actions.get_llm_responses(speed_factor=speed_factor)
@@ -78,7 +77,7 @@ def create_session(
 
     # setup io with transcription sync
     audio_input = FakeAudioInput()
-    audio_output = FakeAudioOutput(can_pause=can_pause_audio)
+    audio_output = FakeAudioOutput()
     transcription_output = FakeTextOutput()
 
     transcript_sync = TranscriptSynchronizer(

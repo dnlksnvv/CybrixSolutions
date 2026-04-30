@@ -410,11 +410,6 @@ class SpeechStream(stt.SpeechStream):
 
         self._request_id = ""
         self._reconnect_event = asyncio.Event()
-        # Track how much duration has already been reported so we can emit
-        # the connection-lifetime remainder on close, matching what Deepgram
-        # actually bills (which includes WebSocket open/teardown overhead
-        # beyond the pushed audio frames).
-        self._reported_duration: float = 0.0
 
     def update_options(
         self,
@@ -567,10 +562,8 @@ class SpeechStream(stt.SpeechStream):
         ws: aiohttp.ClientWebSocketResponse | None = None
 
         while True:
-            conn_start_time = 0.0
             try:
                 ws = await self._connect_ws()
-                conn_start_time = time.perf_counter()
                 tasks = [
                     asyncio.create_task(send_task(ws)),
                     asyncio.create_task(recv_task(ws)),
@@ -600,18 +593,6 @@ class SpeechStream(stt.SpeechStream):
             finally:
                 if ws is not None:
                     await ws.close()
-                    # Deepgram bills WebSocket lifetime, not just audio
-                    # frames pushed.  Emit the remainder between the
-                    # connection's wall-clock lifetime and the frame
-                    # durations we've already reported so usage reflects
-                    # what the provider actually charges for.
-                    if conn_start_time:
-                        self._audio_duration_collector.flush()
-                        lifetime = time.perf_counter() - conn_start_time
-                        remainder = lifetime - self._reported_duration
-                        if remainder > 0:
-                            self._on_audio_duration_report(remainder)
-                        self._reported_duration = 0.0
 
     async def _connect_ws(self) -> aiohttp.ClientWebSocketResponse:
         live_config: dict[str, Any] = {
@@ -665,7 +646,6 @@ class SpeechStream(stt.SpeechStream):
         return ws
 
     def _on_audio_duration_report(self, duration: float) -> None:
-        self._reported_duration += duration
         usage_event = stt.SpeechEvent(
             type=stt.SpeechEventType.RECOGNITION_USAGE,
             request_id=self._request_id,

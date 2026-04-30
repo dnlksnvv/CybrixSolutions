@@ -1,12 +1,7 @@
-from __future__ import annotations
-
 import asyncio
 import logging
 import os
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from .avatar import VideoQuality
+from typing import Any
 
 import aiohttp
 
@@ -59,7 +54,6 @@ class LiveAvatarAPI:
         room: rtc.Room,
         avatar_id: str,
         is_sandbox: bool = False,
-        video_quality: VideoQuality | None = None,
     ) -> dict[str, Any]:
         """Create a new streaming session, return a session id"""
 
@@ -69,15 +63,12 @@ class LiveAvatarAPI:
             "livekit_client_token": livekit_token,
         }
 
-        payload: dict[str, Any] = {
+        payload = {
             "mode": "LITE",
             "avatar_id": avatar_id,
             "is_sandbox": is_sandbox,
             "livekit_config": livekit_config,
         }
-
-        if video_quality is not None:
-            payload["video_quality"] = video_quality
 
         self._headers = {
             "accept": "application/json",

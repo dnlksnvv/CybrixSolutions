@@ -512,7 +512,6 @@ class ToolContext:
         format: Literal["google"],
         *,
         tool_behavior: _provider_format.google.TOOL_BEHAVIOR | None = None,
-        use_parameters_json_schema: bool = True,
     ) -> list[dict[str, Any]]: ...
 
     @overload

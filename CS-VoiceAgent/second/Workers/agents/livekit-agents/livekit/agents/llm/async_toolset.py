@@ -12,7 +12,6 @@ from ..llm.tool_context import (
     FunctionTool,
     RawFunctionTool,
     Tool,
-    ToolError,
     Toolset,
     function_tool,
 )
@@ -196,10 +195,6 @@ class AsyncToolset(Toolset):
     async def cancel(self, call_id: str) -> bool:
         task = self._running_tasks.get(call_id)
         if task is not None:
-            if not task.ctx.speech_handle.allow_interruptions:
-                raise ToolError(
-                    f"Tool call {call_id} is not cancellable because interruptions are disallowed"
-                )
             await utils.aio.cancel_and_wait(task.exe_task)
             return True
         return False
@@ -370,14 +365,7 @@ class AsyncToolset(Toolset):
             return None
 
         if self._on_duplicate_call == "replace":
-            results = await asyncio.gather(
-                *[self.cancel(fnc_call.call_id) for fnc_call in running_fnc_calls],
-                return_exceptions=True,
-            )
-            exceptions = [result for result in results if isinstance(result, Exception)]
-            if exceptions:
-                error_messages = "\n".join([str(e) for e in exceptions])
-                raise ToolError(f"Failed to cancel duplicate tool calls: {error_messages}")
+            await asyncio.gather(*[self.cancel(fnc_call.call_id) for fnc_call in running_fnc_calls])
             return None
 
         if self._on_duplicate_call == "reject":

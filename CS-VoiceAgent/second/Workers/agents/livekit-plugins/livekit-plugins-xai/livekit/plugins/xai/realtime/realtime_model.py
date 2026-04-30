@@ -27,11 +27,9 @@ from livekit.plugins import openai
 
 from ..log import logger
 from ..tools import XAITool
-from ..types import GrokRealtimeModels, GrokVoices
+from ..types import GrokVoices
 
 XAI_BASE_URL = "wss://api.x.ai/v1/realtime"
-
-XAI_DEFAULT_MODEL: GrokRealtimeModels = "grok-voice-think-fast-1.0"
 
 XAI_DEFAULT_INPUT_AUDIO_TRANSCRIPTION = AudioTranscription()
 
@@ -49,7 +47,6 @@ class RealtimeModel(openai.realtime.RealtimeModel):
     def __init__(
         self,
         *,
-        model: NotGivenOr[GrokRealtimeModels | str] = NOT_GIVEN,
         voice: NotGivenOr[GrokVoices | str | None] = "Ara",
         api_key: str | None = None,
         base_url: NotGivenOr[str] = NOT_GIVEN,
@@ -68,7 +65,7 @@ class RealtimeModel(openai.realtime.RealtimeModel):
         resolved_voice = voice if is_given(voice) else "Ara"
         super().__init__(
             base_url=base_url if is_given(base_url) else XAI_BASE_URL,
-            model=model if is_given(model) else XAI_DEFAULT_MODEL,
+            model="grok-4-1-fast-non-reasoning",
             voice=resolved_voice,  # type: ignore[arg-type]
             api_key=api_key,
             modalities=["audio"],
