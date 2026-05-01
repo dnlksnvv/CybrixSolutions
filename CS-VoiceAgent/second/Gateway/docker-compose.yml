@@ -1,0 +1,68 @@
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: cs-gateway-traefik
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_DASHBOARD_PORT:-8088}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+    networks:
+      - gateway
+    restart: unless-stopped
+
+  jwt-auth:
+    build:
+      context: ./jwt-auth
+    container_name: cs-gateway-jwt-auth
+    env_file:
+      - .env
+    environment:
+      AUTH_PORT: "8000"
+    ports:
+      - "${JWT_AUTH_HOST_PORT:-8000}:8000"
+    networks:
+      - gateway
+    restart: unless-stopped
+
+  # Public HTTPS via Cloudflare Tunnel. Put the tunnel token ONLY in .env as
+  # CLOUDFLARE_TUNNEL_TOKEN (never commit). Then:
+  #   docker compose --profile cloudflare up -d
+  #
+  # Zero Trust → Published application route → Service URL (pick one that resolves
+  # FROM INSIDE the cloudflared container):
+  #   - http://cs-gateway-traefik:80   (recommended: Traefik container_name on cs_gateway)
+  #   - http://traefik:80              (Compose service name; same network)
+  # If cloudflared runs on the HOST instead of this compose file, use http://127.0.0.1:80
+  # (or the host port mapped from Traefik), NOT traefik:80 — that hostname exists only on the Docker network.
+  #
+  # Quick checks: https://<your-hostname>/ping should return 200 once the tunnel hits Traefik.
+  cloudflared:
+    profiles:
+      - cloudflare
+    image: cloudflare/cloudflared:latest
+    container_name: cs-gateway-cloudflared
+    restart: unless-stopped
+    depends_on:
+      - traefik
+    # http2 avoids QUIC/UDP to Cloudflare edge (often blocked or flaky in Docker/VPN).
+    # Override: CLOUDFLARE_TUNNEL_PROTOCOL=quic|auto|http2 in .env (Compose substitutes below).
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --protocol
+      - ${CLOUDFLARE_TUNNEL_PROTOCOL:-http2}
+      - run
+    environment:
+      # Only the tunnel token — do not mount full .env into this container (avoids leaking vars into logs).
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    networks:
+      - gateway
+
+networks:
+  gateway:
+    name: ${GATEWAY_NETWORK_NAME:-cs_gateway}

@@ -1,0 +1,28 @@
+http:
+  middlewares:
+    logto-jwt-auth:
+      forwardAuth:
+        address: "http://jwt-auth:8000/auth/verify"
+        trustForwardHeader: false
+        authResponseHeaders:
+          - X-User-Id
+          - X-Organization-Id
+          - X-User-Scopes
+
+    # Browser CORS for SPA. OPTIONS passes forwardAuth because jwt-auth answers 204 without JWT.
+    cors-workspaces:
+      headers:
+        accessControlAllowOriginList:
+          - "https://id-preview--00aa43db-f5a8-4a4a-b02b-6c7a918278aa.lovable.app"
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - Authorization
+          - Content-Type
+        accessControlMaxAge: 3600
+        addVaryHeader: true

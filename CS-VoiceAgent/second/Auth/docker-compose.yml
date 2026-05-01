@@ -1,0 +1,37 @@
+# Logto OSS: Core API (3001) + Admin Console (3002) + PostgreSQL.
+# See https://docs.logto.io/logto-oss/get-started-with-oss
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    user: postgres
+    environment:
+      POSTGRES_USER: ${PG_USER:-logto}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB:-logto}
+    volumes:
+      - logto_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-logto} -d ${PG_DB:-logto}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  logto:
+    image: svhd/logto:${LOGTO_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
+    ports:
+      - "${LOGTO_HTTP_PORT:-3003}:3003"
+      - "${LOGTO_ADMIN_PORT:-3002}:3002"
+    environment:
+      TRUST_PROXY_HEADER: "1"
+      DB_URL: ${DB_URL}
+      ENDPOINT: ${ENDPOINT}
+      ADMIN_ENDPOINT: ${ADMIN_ENDPOINT}
+
+volumes:
+  logto_postgres:

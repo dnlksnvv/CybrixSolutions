@@ -1,0 +1,22 @@
+services:
+  workspaces:
+    build:
+      context: .
+    container_name: cs-workspaces-service
+    env_file:
+      - .env
+    networks:
+      - gateway
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.workspaces.rule=PathPrefix(`/workspaces`) || PathPrefix(`/invitations`)
+      - traefik.http.routers.workspaces.entrypoints=web
+      # CORS headers + JWT forwardAuth. Preflight: jwt-auth returns 204 for OPTIONS (no Bearer).
+      - traefik.http.routers.workspaces.middlewares=cors-workspaces@file,logto-jwt-auth@file
+      - traefik.http.services.workspaces.loadbalancer.server.port=8080
+
+networks:
+  gateway:
+    name: ${GATEWAY_NETWORK_NAME:-cs_gateway}
+    external: true
