@@ -52,3 +52,4 @@ coverage/
 # Keep .env files versioned intentionally
 !.env
 !**/.env
+CS-VoiceAgent/second/Gateway/jwt-auth/jwt-auth

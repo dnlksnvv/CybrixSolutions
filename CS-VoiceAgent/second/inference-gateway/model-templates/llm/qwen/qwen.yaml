@@ -1,8 +1,11 @@
 # Alibaba DashScope Qwen (OpenAI-compat chat). One file = one profile.
 # Required: api_key_env, defaults.base_url, defaults.model.
 
+
 provider: qwen
 
+#public_available: true / false
+#public_languages: [ru: Russian, en: English]
 public_ids:
   - qwen-llm
 
@@ -11,3 +14,4 @@ api_key_env: LLM_QWEN_API_KEY
 defaults:
   base_url: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
   model: qwen-turbo-latest
+

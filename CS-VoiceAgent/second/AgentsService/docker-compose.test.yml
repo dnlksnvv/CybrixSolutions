@@ -1,0 +1,81 @@
+# Изолированный test pipeline: Mongo только для E2E, отдельная БД agents_service_e2e.
+# Production-контейнеры этот файл не используют.
+#
+# Запуск:
+#   docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from e2e-test
+#
+# После прогона удалить volume:
+#   docker compose -f docker-compose.test.yml down -v
+#
+# Примечание: отдельный контейнер unit-test + --abort-on-container-exit несовместимы — при exit unit-test
+# Compose останавливает все сервисы. Unit-тесты выполняются в e2e-test перед HTTP E2E.
+
+services:
+  agents-service-mongo-test:
+    image: mongo:7
+    hostname: agents-service-mongo-test
+    # Транзакции Mongo (CreateAgent и др.) требуют replica set — standalone даёт 500 при WithTransaction.
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    environment:
+      MONGO_INITDB_DATABASE: agents_service_e2e
+    volumes:
+      - agents-service-mongo-test-data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "try { rs.status() } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'agents-service-mongo-test:27017' }] }) } db.adminCommand('ping').ok && rs.status().ok",
+        ]
+      interval: 3s
+      timeout: 10s
+      retries: 20
+      start_period: 25s
+
+  agents-service-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-test
+    hostname: agents-service-test
+    environment:
+      HTTP_ADDR: ":8080"
+      LOG_LEVEL: info
+      GIN_MODE: release
+      MONGO_URI: mongodb://agents-service-mongo-test:27017
+      MONGO_DB: agents_service_e2e
+      HTTP_BODY_LIMIT_BYTES: "20971520"
+    depends_on:
+      agents-service-mongo-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 3s
+      timeout: 5s
+      retries: 25
+      start_period: 5s
+
+  e2e-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    working_dir: /src
+    environment:
+      AGENTS_SERVICE_BASE_URL: http://agents-service-test:8080
+      # Пусто = тест сам генерирует уникальный workspace (избегаем лимита 100 агентов на старых volume)
+      AGENTS_SERVICE_WORKSPACE_ID: ${E2E_WORKSPACE_ID:-}
+    depends_on:
+      agents-service-test:
+        condition: service_healthy
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "go test ./... -count=1 && go test ./tests/e2e -tags=e2e -count=1 -v",
+      ]
+
+volumes:
+  agents-service-mongo-test-data:
